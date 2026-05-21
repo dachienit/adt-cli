@@ -1,0 +1,27 @@
+{
+  "credentials": {
+    "tenantmode": "dedicated",
+    "token-type": [
+      "xsuaa",
+      "ias"
+    ],
+    "clientid": "sb-cloned6dcddf405cc44e0b2ba2645bfc4a71d!b34391|connectivity!b3",
+    "token_service_domain": "authentication.ap11.hana.ondemand.com",
+    "credential-type": "binding-secret",
+    "token_service_url": "https://rb-bd-vn-hub-d.authentication.ap11.hana.ondemand.com",
+    "xsappname": "cloned6dcddf405cc44e0b2ba2645bfc4a71d!b34391|connectivity!b3",
+    "onpremise_proxy_ldap_port": "20001",
+    "onpremise_socks5_proxy_port": "20004",
+    "clientsecret": "f2b5e8c1-bf99-4eed-acad-730f4ef20bd3$-y1nHdsvHATpIM6J8ipU33VrWOKzUvVlyHRoQKR7XW8=",
+    "onpremise_proxy_http_port": "20003",
+    "url": "https://rb-bd-vn-hub-d.authentication.ap11.hana.ondemand.com",
+    "onpremise_proxy_host": "connectivityproxy.internal.cf.ap11.hana.ondemand.com",
+    "uaadomain": "authentication.ap11.hana.ondemand.com",
+    "onpremise_proxy_port": "20003",
+    "verificationkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArzzrjYxrsYXDQM4T2AVQ\nH47jys6CRqptapeJzgsxz/C02tQkSd0H3S5zcxJCtdk/CdaVqh5V1bB3F9xdDkb/\nO3xYWR0eB4bgBLySuWsh7nCmJZ837Srdf8QJh1bZetGtHPSB6hYznZxdztQJBAd+\ny7AMXyl8VbzyriPTOOG+Uei508OrK0ZR/yCeWkxaFIXPx/kFsAVhvtEiUEQ1ltI0\nPunrULPS4UpjOrsz6i0dKpwQqq3GGehUFG4l/8r+maXPsKRFQGbJEuctN3wu9+z8\nFyjCeHuXr2t9uoD186ZHVa8efaM3jKQyehwzQT/pCLSAEN0WzOOe4Sr3EAclm+5p\nOwIDAQAB\n-----END PUBLIC KEY-----",
+    "identityzone": "rb-bd-vn-hub-d",
+    "tenantid": "1afa8a5d-f553-4a69-8be7-d0475d295899",
+    "onpremise_proxy_rfc_port": "20001",
+    "region_configuration_id": "cf-ap11"
+  }
+}

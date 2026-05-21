@@ -1,0 +1,51 @@
+# ---- node ------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Lockfile - mirroring the root repo policy. Drop this line if your team
+# wants a deterministic lock for the CLI subpackage.
+package-lock.json
+
+# ---- adt-cli runtime artefacts --------------------------------------------
+# Local profile store (only relevant if you set ADT_CLI_HOME=. inside the repo).
+.adt-cli/
+
+# Sample ABAP files & their pulled-back copies created during testing.
+zhello_adt.abap
+*.abap.bak
+*.abap.tmp
+
+# .http response captures from `adt http run` redirects.
+*.response
+*.http.out
+
+# Any "scratch" file the README/TESTING examples write next to the CLI.
+__*.js
+*.tmp
+*.log
+
+# ---- environment & secrets -------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+service-binding.json
+destinations.json
+
+# ---- editor / OS -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ---- coverage / build ------------------------------------------------------
+coverage/
+.nyc_output/
+dist/
+build/
