@@ -50,6 +50,6 @@ coverage/
 dist/
 build/
 
-conn-key.json*
-dest-key.json*
-xsuaa-key.json*
+conn-key.json
+dest-key.json
+xsuaa-key.json
