@@ -53,3 +53,6 @@ build/
 conn-key.json
 dest-key.json
 xsuaa-key.json
+abaplint.md
+CLAUDE.md
+CLI_REFERENCE.md
