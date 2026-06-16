@@ -61,20 +61,8 @@ async function resolveDestination(name, opts = {}) {
 
   const access = await fetchXsuaaToken(binding.credentials);
   
-  // IYH1HC: comment
-  /* const url = trim(binding.credentials.uri || binding.credentials.url) +
-    `/destination-configuration/v1/destinations/${encodeURIComponent(name)}`; */
-
-  // IYH1HC: If a profile URL is set (our Smart Proxy), use it as the base.
-  // Otherwise, fall back to the direct BTP destination service URL.
-  let baseUrl = trim(binding.credentials.uri || binding.credentials.url);
-  const activeProfile = config.getProfile(process.env.ADT_PROFILE || config.load().defaultProfile);
-  if (activeProfile && activeProfile.url) {
-    baseUrl = trim(activeProfile.url);
-  }
-
-  const url = `${baseUrl}/destination-configuration/v1/destinations/${encodeURIComponent(name)}`;
-  log.step(`Fetching destination "${name}" from ${url}`);
+  const url = trim(binding.credentials.uri || binding.credentials.url) +
+    `/destination-configuration/v1/destinations/${encodeURIComponent(name)}`;
 
   const headers = { Authorization: `Bearer ${access.token}` };
   if (opts.iss) headers["X-User-Token"] = "";
@@ -192,6 +180,7 @@ function normalizeLocalEnvDestination(d) {
     url: trim(d.url),
     authType: d.authentication || (authHeader ? "BasicAuthentication" : "NoAuthentication"),
     authHeader,
+    forwardAuthToken: truthy(d.forwardAuthToken), //IYH1HC add
     sapClient: d["sap-client"] || null,
     language: d.language || null,
     additionalHeaders,

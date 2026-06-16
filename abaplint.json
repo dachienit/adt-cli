@@ -1,0 +1,18 @@
+{
+  "global": {
+    "files": "/abap/**/*.*"
+  },
+  "dependencies": [
+    { "folder": "/abap", "files": "/**/*.*" }
+  ],
+  "syntax": {
+    "version": "v757",
+    "errorNamespace": "^(Z|Y)",
+    "globalConstants": []
+  },
+  "rules": {
+    "parser_error": true,
+    "check_syntax": true,
+    "unknown_types": true
+  }
+}

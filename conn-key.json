@@ -1,6 +1,6 @@
 {
   "credentials": {
-    "tenantmode": "dedicated",
+  "tenantmode": "dedicated",
     "token-type": [
       "xsuaa",
       "ias"
@@ -12,7 +12,7 @@
     "xsappname": "cloned6dcddf405cc44e0b2ba2645bfc4a71d!b34391|connectivity!b3",
     "onpremise_proxy_ldap_port": "20001",
     "onpremise_socks5_proxy_port": "20004",
-    "clientsecret": "f2b5e8c1-bf99-4eed-acad-730f4ef20bd3$-y1nHdsvHATpIM6J8ipU33VrWOKzUvVlyHRoQKR7XW8=",
+    "clientsecret": "6d668922-61d6-46bf-b313-eec6e30396c5$4s5HqZJOA9ZSIKnsaA7uPjqw6r7kQy_PmSsBAWxlZcQ=",
     "onpremise_proxy_http_port": "20003",
     "url": "https://rb-bd-vn-hub-d.authentication.ap11.hana.ondemand.com",
     "onpremise_proxy_host": "connectivityproxy.internal.cf.ap11.hana.ondemand.com",

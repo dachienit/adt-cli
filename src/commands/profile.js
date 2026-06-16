@@ -2,6 +2,10 @@
 
 // `adt auth profile` subcommands - manage saved profiles.
 
+//IYH1HC add
+const path = require("path");
+const fs = require("fs");
+//IYH1HC add
 const log = require("../logger");
 const config = require("../config");
 const { renderJson } = require("../output");
@@ -59,6 +63,37 @@ function register(profile) {
     .description("Print the location of the config file.")
     .action(() => {
       console.log(config.CONFIG_FILE);
+    });
+
+  //IYH1HC add
+  // Attach an abaplint config (json/jsonc) to a profile so that `adt lint`
+  // commands automatically pick it up when no --config flag is passed.
+  profile
+    .command("set-lint-config")
+    .description("Attach an abaplint config file (json/jsonc) to a profile.")
+    .argument("<configPath>", "path to abaplint.json or abaplint.jsonc")
+    .option("--name <profile>", "target profile (defaults to the current default)")
+    .option("--clear", "remove the abaplintConfig field from the profile instead of setting it")
+    .action((configPath, opts) => {
+      const targetName = opts.name || config.load().defaultProfile;
+      if (!targetName) {
+        log.err("No default profile is configured and --name was not given.");
+        process.exitCode = 1;
+        return;
+      }
+      if (opts.clear) {
+        config.updateProfile(targetName, { abaplintConfig: null });
+        log.ok(`Cleared abaplintConfig on profile "${targetName}".`);
+        return;
+      }
+      const abs = path.resolve(configPath);
+      if (!fs.existsSync(abs)) {
+        log.err(`Config file not found: ${abs}`);
+        process.exitCode = 1;
+        return;
+      }
+      config.updateProfile(targetName, { abaplintConfig: abs });
+      log.ok(`Saved abaplintConfig=${abs} on profile "${targetName}".`);
     });
 }
 

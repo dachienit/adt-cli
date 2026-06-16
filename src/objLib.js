@@ -9,6 +9,8 @@
 const log = require("./logger");
 const xml = require("./xml");
 const { ensureOk } = require("./output");
+//IYH1HC add
+const adapter = require("./abaplintAdapter");
 
 // Convert a partial path or a full /sap/bc/adt URL into the URL the server expects.
 // We accept three shapes:
@@ -210,6 +212,127 @@ async function getSource(client, objectUrl, opts = {}) {
   return res.text;
 }
 
+//IYH1HC add
+// List the direct contents of an ABAP package using the ADT nodestructure
+// endpoint. Returns a flat array of { typeId, name, uri, description } entries.
+// Used by `adt lint package <pkg>` to enumerate objects to lint.
+async function listPackageContents(client, packageName) {
+  if (!packageName) throw new Error("packageName is required");
+  const pkg = String(packageName).toUpperCase();
+  const params = new URLSearchParams();
+  params.set("parent_name", pkg);
+  params.set("parent_tech_name", pkg);
+  params.set("parent_type", "DEVC/K");
+  params.set("withShortDescriptions", "true");
+  //IYH1HC add — removed "x-csrf-token": "fetch" from headers; client.js ensureCsrf()
+  // already fetches and injects the token automatically for all mutating requests.
+  // Passing "fetch" here overrides the real token (client.js line 190 skips injection
+  // when the header is already present), causing SAP to reject with 403.
+  const res = await client.send(
+    "POST",
+    `/sap/bc/adt/repository/nodestructure?${params.toString()}`,
+    {
+      accept:
+        "application/vnd.sap.as+xml; charset=UTF-8; dataname=com.sap.adt.RepositoryObjTreeContent",
+    }
+  );
+  ensureOk(res, "list-package-contents");
+
+  // Body shape (fast-xml-parser):
+  //   asx:abap > asx:values > DATA > TREE_CONTENT > SEU_ADT_REPOSITORY_OBJ_NODE [*]
+  // Each node carries OBJECT_TYPE, OBJECT_NAME, OBJECT_URI, DESCRIPTION, ...
+  const data = walk(res.body, ["asx:abap", "asx:values", "DATA"]);
+  if (!data) return [];
+  const tree = data.TREE_CONTENT || {};
+  let nodes = tree.SEU_ADT_REPOSITORY_OBJ_NODE || [];
+  if (!Array.isArray(nodes)) nodes = [nodes];
+
+  const out = [];
+  for (const n of nodes) {
+    const typeId = n.OBJECT_TYPE || n.object_type || n["@_OBJECT_TYPE"];
+    const name = n.OBJECT_NAME || n.object_name || n["@_OBJECT_NAME"];
+    const uri = n.OBJECT_URI || n.object_uri || n["@_OBJECT_URI"];
+    const description =
+      n.DESCRIPTION || n.description || n["@_DESCRIPTION"] || "";
+    if (!typeId || !name) continue;
+    out.push({
+      typeId: String(typeId),
+      name: String(name),
+      uri: uri ? String(uri) : null,
+      description: String(description),
+    });
+  }
+  return out;
+}
+
+//IYH1HC add
+// Build the fallback ADT URL for an object when listPackageContents returns no uri.
+function inferUrlFromTypeAndName(typeId, name) {
+  const lower = String(name).toLowerCase();
+  switch (typeId) {
+    case "CLAS/OC":
+      return `oo/classes/${encodeURIComponent(lower)}`;
+    case "INTF/OI":
+      return `oo/interfaces/${encodeURIComponent(lower)}`;
+    case "PROG/P":
+      return `programs/programs/${encodeURIComponent(lower)}`;
+    case "PROG/I":
+      return `programs/includes/${encodeURIComponent(lower)}`;
+    default:
+      throw new Error(`Unsupported typeId "${typeId}" for URL inference`);
+  }
+}
+
+//IYH1HC add
+// Fetch all relevant includes for one ABAP object and return them as
+// abaplint MemoryFile instances. 404 includes (e.g. missing testclasses) are
+// silently skipped. Used by both `adt lint` and `adt object pull`.
+//IYH1HC add — On legacy S/4HANA (e.g. T4X), the ADT endpoint
+//IYH1HC add — /source/<include> returns the SAME body for all 5 CLAS
+//IYH1HC add — sub-includes (main = definitions = implementations = macros =
+//IYH1HC add — testclasses). Feeding 5 identical files to abaplint creates
+//IYH1HC add — duplicate class definitions inside one Registry → the 3_structures
+//IYH1HC add — pass fails to locate MethodImplementation nodes → metrics empty.
+//IYH1HC add — Dedupe by raw content so abaplint sees exactly one .clas.abap.
+async function fetchObjectAsMemoryFiles(client, objectUrl, typeId, name, includeOverride) {
+  const includes = includeOverride
+    ? [includeOverride]
+    : adapter.relevantIncludesFor(typeId);
+
+  const files = [];
+  //IYH1HC add — content dedupe (only for CLAS, where SAP repeats the body).
+  const seenBodies = typeId === "CLAS/OC" ? new Set() : null;
+
+  for (const inc of includes) {
+    try {
+      const src = await getSource(client, objectUrl, { include: inc });
+      //IYH1HC add
+      if (seenBodies) {
+        // Cheap content key: length + first 200 chars. Cheap to compute, very
+        // strong signal for "same source", insensitive to trailing whitespace
+        // differences SAP sometimes injects.
+        const key = `${(src || "").length}:${(src || "").slice(0, 200)}`;
+        if (seenBodies.has(key)) {
+          log.debug(
+            `Skipping CLAS include "${inc}" for ${name}: body identical to a previously fetched include (legacy ABAP single-file source).`
+          );
+          continue;
+        }
+        seenBodies.add(key);
+      }
+      files.push(adapter.buildMemoryFile(typeId, name, inc, src));
+    } catch (e) {
+      const status = e && e.response && e.response.status;
+      if (status === 404) {
+        log.info(`Skipping include "${inc}" (404 not found).`);
+        continue;
+      }
+      throw e;
+    }
+  }
+  return files;
+}
+
 // --- helpers ----------------------------------------------------------------
 
 function walk(obj, path) {
@@ -246,4 +369,8 @@ module.exports = {
   inactiveObjects,
   structure,
   getSource,
+  //IYH1HC add
+  listPackageContents,
+  inferUrlFromTypeAndName,
+  fetchObjectAsMemoryFiles,
 };

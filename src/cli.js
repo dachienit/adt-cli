@@ -38,6 +38,12 @@ const cmdDebug = require("./commands/debugger");
 const cmdRequest = require("./commands/request");
 const cmdRunHttp = require("./commands/runHttp");
 const cmdAtc = require("./commands/atc");
+//IYH1HC add
+const cmdLint = require("./commands/lint");
+//IYH1HC add
+const cmdPull = require("./commands/pull");
+//IYH1HC add
+const cmdContext = require("./commands/context");
 
 async function run(argv) {
   const program = new Command();
@@ -56,7 +62,11 @@ async function run(argv) {
         "  adt trace     - ABAP runtime traces\n" +
         "  adt atc       - ABAP Test Cockpit (variants, runs, worklists)\n" +
         "  adt debug     - debugger control\n" +
-        "  adt http      - generic request and .http file runner\n\n" +
+        "  adt http      - generic request and .http file runner\n" +
+        //IYH1HC add
+        "  adt lint      - offline static analysis (abaplint): object / file / package\n" +
+        //IYH1HC add
+        "  adt context   - build LLM-ready context bundles from ABAP packages\n\n" +
         "Quick start:\n" +
         "  adt auth login basic --url https://abap:44300 --user DEVELOPER --password '****' --name dev\n" +
         "  adt system discovery\n" +
@@ -117,6 +127,8 @@ async function run(argv) {
   // Flat verbs on the object group: structure, source, set-source, properties,
   // versions, lock, unlock, activate, inactive, delete, validate.
   cmdObjectsRead.register(object);
+  //IYH1HC add
+  cmdPull.register(object);
 
   const data = program.command("data").description("SQL and DDIC data preview.");
   cmdData.register(data);
@@ -143,6 +155,18 @@ async function run(argv) {
     .description("Generic HTTP request and .http file runner.");
   cmdRequest.register(http);
   cmdRunHttp.register(http);
+
+  //IYH1HC add
+  const lint = program
+    .command("lint")
+    .description("Offline static analysis via abaplint (object / file / package).");
+  cmdLint.register(lint);
+
+  //IYH1HC add
+  const context = program
+    .command("context")
+    .description("Build LLM-ready context bundles from ABAP packages.");
+  cmdContext.register(context);
 
   program.showHelpAfterError("(use --help for command help)");
   program.exitOverride();

@@ -21,7 +21,9 @@
 //       "tokenExpiresAt": 1735689600000,         // ms epoch
 //       "ideId": "<uuid>",                       // for ADT debugger
 //       "terminalId": "<uuid>",
-//       "insecure": false                        // skip TLS verification
+//       "insecure": false,                       // skip TLS verification
+//IYH1HC add
+//       "abaplintConfig": "/abs/path/abaplint.json" // optional: path to abaplint config
 //     }
 //   }
 // }

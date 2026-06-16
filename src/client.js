@@ -227,12 +227,33 @@ class AdtClient {
     };
     if (this._agent) fetchOpts.dispatcher = undefined; // global fetch uses undici; agent option ignored.
 
+    //IYH1HC add — Per-call timeout via AbortController.
+    // Node's global fetch() has NO default timeout — a stalled server holds the
+    // socket open until the OS kills it (can be tens of minutes). One slow
+    // endpoint in a bulk operation (e.g. adt object pull) would then freeze the
+    // whole pipeline. Default 60s; override per-call via options.timeoutMs.
+    const timeoutMs = Number.isFinite(options.timeoutMs)
+      ? Math.max(1000, options.timeoutMs)
+      : 60_000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    fetchOpts.signal = controller.signal;
+
     let res;
     try {
       res = await fetch(url, fetchOpts);
     } catch (e) {
+      //IYH1HC add — surface timeout as a clear, distinct error
+      if (e && e.name === "AbortError") {
+        const msg = `timeout after ${timeoutMs}ms at ${url.pathname}${url.search}`;
+        log.err(`Network timeout: ${msg}`);
+        throw new Error(msg);
+      }
       log.err(`Network error: ${e.message}`);
       throw e;
+    } finally {
+      //IYH1HC add
+      clearTimeout(timer);
     }
 
     this.storeSetCookies(res.headers);
@@ -281,8 +302,16 @@ class AdtClient {
 
     const ok = res.status >= 200 && res.status < 300;
     if (!ok) {
-      log.err(`HTTP ${res.status} ${res.statusText} from ${method.toUpperCase()} ${pathOrUrl}`);
-      if (text) log.err(truncate(text, 600));
+      //IYH1HC add - allow callers to suppress ERR logs for expected statuses
+      // (e.g. 404 when probing optional resources like long texts).
+      const silent =
+        Array.isArray(options.silentStatuses) && options.silentStatuses.includes(res.status);
+      if (!silent) {
+        log.err(`HTTP ${res.status} ${res.statusText} from ${method.toUpperCase()} ${pathOrUrl}`);
+        if (text) log.err(truncate(text, 600));
+      } else {
+        log.debug(`HTTP ${res.status} ${res.statusText} from ${method.toUpperCase()} ${pathOrUrl} (silenced)`);
+      }
     }
 
     return {

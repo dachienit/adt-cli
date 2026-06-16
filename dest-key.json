@@ -1,6 +1,6 @@
 {
   "credentials": {
-    "tenantmode": "dedicated",
+  "tenantmode": "dedicated",
     "token-type": [
       "xsuaa",
       "ias"
@@ -8,7 +8,7 @@
     "clientid": "sb-clonef0d404996d7a40c2a74aa6cbd7f46b1c!b34391|destination-xsappname!b5",
     "credential-type": "binding-secret",
     "xsappname": "clonef0d404996d7a40c2a74aa6cbd7f46b1c!b34391|destination-xsappname!b5",
-    "clientsecret": "d7c223e7-9731-4b25-a881-ecb3ba1e6af6$FbYM8uhPTGrVoO83arV2gYjeez4u00Zrc00yyhYzuHk=",
+    "clientsecret": "512c193c-f888-48d8-916e-65bb3b28d7f5$QkImNf62fPDk0RnaF2Rl2wfT4UpJrzgCPIiTrJz9xlU=",
     "uri": "https://destination-configuration.cfapps.ap11.hana.ondemand.com",
     "url": "https://rb-bd-vn-hub-d.authentication.ap11.hana.ondemand.com",
     "uaadomain": "authentication.ap11.hana.ondemand.com",
