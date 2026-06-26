@@ -1,29 +1,6 @@
 "use strict";
 
 // Build a cross-object dependency graph for one package.
-//
-// Phase 2 ships only OUTBOUND (parse-driven, free) edges. Inbound where-used
-// edges via SAP's /usageReferences endpoint land in Phase 4 behind the
-// `--with-where-used` flag.
-//
-// Edge kinds emitted in Phase 2:
-//   - inheritsFrom   (class A → class B)        — from skeleton
-//   - implements     (class A → interface I)    — from skeleton
-//   - callFunction   (file → function module)   — from AST (CALL FUNCTION)
-//   - instantiates   (file → class)             — from AST (CREATE OBJECT, NEW)
-//   - readsTable     (file → DDIC table)        — from AST (SELECT)
-//   - includes       (file → include)           — from AST (INCLUDE)
-//
-// Node id format: "<TYPE>:<NAME_UPPER>".
-//   TYPE ∈ { CLAS, INTF, PROG, FUGR, INCL, FUNC, TABL, UNKN }.
-// FUNC and TABL nodes typically point OUTSIDE the package — that's fine;
-// the LLM should see what we lean on. Such nodes are added with
-// `external: true` so the writer can distinguish.
-//
-// The module intentionally uses concatTokens()-based regex for name
-// extraction rather than reaching into specific Expression AST classes. This
-// is robust across abaplint releases (less coupling to internal AST shapes)
-// and easily extended.
 
 const log = require("../logger");
 
@@ -326,8 +303,6 @@ function _extractIncludeTarget(stmt) {
   return null;
 }
 
-//IYH1HC add — Phase 4: fetch inbound where-used edges from SAP.
-//
 // ADT endpoint:
 //   POST /sap/bc/adt/repository/informationsystem/usageReferences?uri=<uri>
 //   body (some releases require it):
@@ -400,16 +375,6 @@ async function enrichWithWhereUsed(client, graph, internalObjects) {
 
 async function _fetchUsageReferences(client, objectUri) {
   const url = `/sap/bc/adt/repository/informationsystem/usageReferences?uri=${encodeURIComponent(objectUri)}`;
-  //IYH1HC comment - // Try body-less first (works on BTP Steampunk and recent on-prem).
-  //IYH1HC comment - for (const body of [undefined, _whereUsedBody(objectUri)]) {
-  //IYH1HC comment -   try { ... if (!res || !res.body) continue; ... }
-  //IYH1HC comment -   catch (e) { if (status === 400 || status === 415) continue; ... }
-  //IYH1HC comment - }
-  //IYH1HC add - Server requires BOTH the request body AND the specific Content-Type
-  // application/vnd.sap.adt.repository.usagereferences.request.v1+xml.
-  // The previous body-less probe always returns 415 on this release, and
-  // client.send does NOT throw on non-2xx, so the old fallback loop never
-  // retried with body. Send the correct payload directly.
   try {
     const res = await client.send("POST", url, {
       accept: "application/vnd.sap.adt.repository.usagereferences.result.v1+xml, application/xml;q=0.8",
@@ -424,19 +389,6 @@ async function _fetchUsageReferences(client, objectUri) {
   }
 }
 
-//IYH1HC comment - function _whereUsedBody(objectUri) {
-//IYH1HC comment -   return (
-//IYH1HC comment -     '<?xml version="1.0" encoding="UTF-8"?>\n' +
-//IYH1HC comment -     '<usageReferenceRequest xmlns:adtcore="http://www.sap.com/adt/core">\n' +
-//IYH1HC comment -     `  <adtcore:objectIdentifier adtcore:uri="${objectUri}"/>\n` +
-//IYH1HC comment -     "</usageReferenceRequest>"
-//IYH1HC comment -   );
-//IYH1HC comment - }
-//IYH1HC add - Format verified against `abap-adt-api` library
-// (mcp-server/node_modules/abap-adt-api/build/api/syntax.js:145-148).
-// The root element MUST be namespaced with the "usagereferences" prefix
-// (lowercase) and contain an empty <affectedObjects/> child. The target
-// URI is conveyed via the ?uri= query string, not the body.
 function _whereUsedBody(_objectUri) {
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -474,9 +426,6 @@ function _collectUsageRows(node, out) {
   }
 }
 
-//IYH1HC add
-// Phase A1: bulk-fetch raw where-used edges for `adt object pull`.
-//
 // Unlike enrichWithWhereUsed (which enriches an already-built abaplint
 // dependency graph for `adt context build`), this helper has NO Registry
 // dependency — it only needs the list of pulled nodes (with their ADT URIs)
@@ -552,7 +501,6 @@ async function fetchDependenciesForPull(client, internalObjects, opts = {}) {
 module.exports = {
   buildDependencyGraph,
   enrichWithWhereUsed,
-  //IYH1HC add
   fetchDependenciesForPull,
   // Exported for unit tests in later phases.
   _identifyFile,

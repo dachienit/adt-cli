@@ -44,14 +44,6 @@ async function fetchCodeAsFiles(client, node, _opts) {
   };
 }
 
-// FUGR/F uses the rich function-group fetcher which enumerates FMs and
-// includes; FUGR/FF and FUGR/I encountered as standalone nodes (rare) fall
-// back to single-file fetch via objLib.
-//
-//IYH1HC add — opts.namespacePrefixes is forwarded to fugrFetcher so it can
-// drop standard SAP includes (LSVIMTOP etc.) that SE54 generates inside
-// table-maintenance function groups. Without this filter, the FUGR fetcher
-// would loop through every standard include and stall on slow source GETs.
 async function fetchFugrAsFiles(client, node, opts = {}) {
   if (node.typeId === "FUGR/F") {
     const result = await fugrFetcher.fetchFunctionGroup(client, node, opts);
@@ -65,13 +57,6 @@ async function fetchFugrAsFiles(client, node, opts = {}) {
   return fetchCodeAsFiles(client, node, opts);
 }
 
-//IYH1HC comment - // Default-include set. Entries with `defaultInclude: false` are NOT pulled by
-//IYH1HC comment - // default — user must opt in via `--include-only ...,MSAG/N` (or similar).
-//IYH1HC comment - // Niche / runtime-only types (MSAG/N, TRAN/T, TOBJ/TOB, SUSH) are demoted
-//IYH1HC comment - // because their ADT endpoints are release-dependent and have been observed
-//IYH1HC comment - // to stall on T4X (msag in particular hung indefinitely before client.js
-//IYH1HC comment - // gained a per-call timeout).
-//IYH1HC add
 // Pure dispatch table — typeId → { extension, fetch }.
 // "Which typeIds to pull" is no longer decided here; it lives in pullConfig.js
 // (built-in default + user/project pull-config.json + CLI flags). This module
@@ -111,22 +96,15 @@ function isKnownType(typeId) {
   return Object.prototype.hasOwnProperty.call(REGISTRY, typeId);
 }
 
-//IYH1HC add — pure dispatch lookup. Filter decisions live in pullConfig.js.
 function getStrategy(typeId) {
   return REGISTRY[typeId] || null;
 }
-
-//IYH1HC comment - resolveStrategy(typeId, opts) was a filter + dispatch combo.
-//IYH1HC comment - Replaced by getStrategy(typeId) + pullConfig.loadEffectiveTypes().
-//IYH1HC comment - explainExclusion(typeId, opts) was used to render skip reasons.
-//IYH1HC comment - Replaced by pull.js inline reason building when classifying nodes.
 
 function listKnownTypes() {
   return KNOWN_TYPE_IDS.slice();
 }
 
 module.exports = {
-  //IYH1HC add
   getStrategy,
   isKnownType,
   listKnownTypes,

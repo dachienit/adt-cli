@@ -145,6 +145,36 @@ function register(login) {
     });
 
   login
+    .command("basicsso")
+    .description("Save a basicsso (Kerberos/SPNEGO) profile for on-prem ADT and verify it. No password is stored.")
+    .option("--name <name>", "profile name to create or update (overrides --profile/global)")
+    .requiredOption("--url <url>", "ABAP base URL, e.g. https://s1r.wdisp.bosch.com")
+    .requiredOption("--spn <spn>", "Kerberos service principal name, e.g. SAP/S1RSNCAD")
+    .option("--client <client>", "sap-client (e.g. 011)")
+    .option("--language <lang>", "sap-language (e.g. EN)")
+    .option("--insecure", "skip TLS certificate verification")
+    .option("--no-verify", "skip the discovery verification call")
+    .action(async function (opts) {
+      const gopts = this.optsWithGlobals();
+      const insecure = !!gopts.insecure;
+      const name = resolveProfileName(this, opts.name);
+      log.step(`Saving profile "${name}" (basicsso) -> ${opts.url} [spn=${opts.spn}]`);
+      config.setProfile(name, {
+        kind: "basicsso",
+        url: opts.url,
+        spn: opts.spn,
+        client: opts.client,
+        language: opts.language,
+        insecure,
+      });
+      if (opts.verify === false) {
+        log.ok("Profile saved (verification skipped).");
+        return;
+      }
+      await verify(name, insecure);
+    });
+
+  login
     .command("test")
     .description("Verify a saved profile by hitting /sap/bc/adt/discovery.")
     .option("--name <name>", "profile name (overrides --profile/global)")
@@ -306,7 +336,7 @@ async function verify(profileName, insecure) {
     process.exitCode = 2;
     return;
   }
-  log.ok(`Authentication OK. ${profile.kind} as ${profile.user || profile.clientId}.`);
+  log.ok(`Authentication OK. ${profile.kind} as ${profile.user || profile.clientId || profile.spn || profile.url}.`);
 }
 
 function prompt(question, hidden = false) {

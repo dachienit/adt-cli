@@ -22,7 +22,6 @@
 //       "ideId": "<uuid>",                       // for ADT debugger
 //       "terminalId": "<uuid>",
 //       "insecure": false,                       // skip TLS verification
-//IYH1HC add
 //       "abaplintConfig": "/abs/path/abaplint.json" // optional: path to abaplint config
 //     }
 //   }
@@ -98,6 +97,7 @@ function getProfile(name) {
     password: deobf(p.password),
     clientSecret: deobf(p.clientSecret),
     refreshToken: deobf(p.refreshToken),
+    ssoToken: deobf(p.ssoToken),
   };
 }
 
@@ -150,6 +150,25 @@ function updateProfile(name, patch) {
   save(cfg);
 }
 
+function saveSsoTicket(profileName, ssoUser, rawToken) {
+  if (!profileName || !rawToken) return;
+  const cfg = load();
+  if (!cfg.profiles[profileName]) cfg.profiles[profileName] = {};
+  cfg.profiles[profileName].ssoUser = ssoUser || null;
+  cfg.profiles[profileName].ssoToken = obf(rawToken);
+  save(cfg);
+}
+
+function clearSsoTicket(profileName) {
+  if (!profileName) return;
+  const cfg = load();
+  const p = cfg.profiles[profileName];
+  if (!p) return;
+  delete p.ssoUser;
+  delete p.ssoToken;
+  save(cfg);
+}
+
 function ensureIds(profile) {
   // Stable IDs are required for ADT debugger sessions.
   let changed = false;
@@ -179,4 +198,6 @@ module.exports = {
   listProfiles,
   updateProfile,
   ensureIds,
+  saveSsoTicket,
+  clearSsoTicket,
 };

@@ -55,10 +55,6 @@ function objectToFilename(typeId, name, include) {
     case "PROG/I":
       // For lint purposes treat a standalone include as a program.
       return `${lower}.prog.abap`;
-    //IYH1HC add — Phase 3: FUGR family. Function groups use abapGit
-    // convention "<group>.fugr.<member>.abap" for each include (TOP, UXX, etc.)
-    // and "<group>.fugr.<fm>.abap" for individual function module bodies.
-    // The `include` argument here carries the abapGit member tag.
     case "FUGR/F":
     case "FUGR/FF":
     case "FUGR/I":
@@ -69,9 +65,6 @@ function objectToFilename(typeId, name, include) {
 }
 
 // All object types currently supported by the lint adapter.
-//IYH1HC comment — extended in Phase 3 to include FUGR family.
-// const SUPPORTED_TYPE_IDS = new Set(["CLAS/OC", "INTF/OI", "PROG/P", "PROG/I"]);
-//IYH1HC add
 const SUPPORTED_TYPE_IDS = new Set([
   "CLAS/OC",
   "INTF/OI",
@@ -93,7 +86,7 @@ function relevantIncludesFor(typeId) {
   if (typeId === "CLAS/OC") {
     return ["main", "definitions", "implementations", "macros", "testclasses"];
   }
-  //IYH1HC add — FUGR families are fetched by the function-group fetcher,
+  // FUGR families are fetched by the function-group fetcher,
   // which discovers includes/FMs dynamically (we cannot know names ahead of
   // time). The fetcher uses adapter.objectToFilename(typeId, name, member)
   // directly; this helper is left as a default fall-through.
@@ -158,7 +151,6 @@ function lintFiles(memoryFiles, config) {
   return registry.findIssues();
 }
 
-//IYH1HC add
 // Build and parse a Registry from an array of MemoryFile instances.
 // Returns the Registry so callers can do more than findIssues (skeleton, metrics, LSP, format, fix).
 function buildPackageRegistry(memoryFiles, config) {
@@ -168,7 +160,6 @@ function buildPackageRegistry(memoryFiles, config) {
   return registry;
 }
 
-//IYH1HC add
 // Extract a lightweight JSON skeleton from a parsed Registry.
 // Covers classes (methods, superclass, interfaces), interfaces, programs.
 // Produces ~5-10x less token cost than raw ABAP source — suitable for LLM context.
@@ -178,9 +169,6 @@ function extractSkeleton(registry) {
   for (const obj of registry.getObjects()) {
     const type = obj.getType();
     if (type === "CLAS") skeleton.classes.push(_buildClassSkeleton(obj));
-    //IYH1HC comment — interfaces used to be name-only; now use rich extractor.
-    // else if (type === "INTF") skeleton.interfaces.push({ name: obj.getName() });
-    //IYH1HC add
     else if (type === "INTF") skeleton.interfaces.push(_buildInterfaceSkeleton(obj));
     else if (type === "PROG") skeleton.programs.push({ name: obj.getName() });
     else if (type === "FUGR") skeleton.functionGroups.push({ name: obj.getName() });
@@ -189,42 +177,6 @@ function extractSkeleton(registry) {
   return skeleton;
 }
 
-//IYH1HC comment — previous shallow class skeleton; replaced by rich extractor below.
-// function _buildClassSkeleton(obj) {
-//   const def = obj.getClassDefinition ? obj.getClassDefinition() : null;
-//   if (!def) return { name: obj.getName(), error: "no class definition parsed" };
-//   let methods = [];
-//   try {
-//     methods = def.getMethodDefinitions().getAll().map((m) => ({
-//       name: m.getName(),
-//       visibility: String(m.getVisibility()),
-//       isStatic: m.isStatic(),
-//       isAbstract: m.isAbstract(),
-//       isRedefinition: m.isRedefinition(),
-//     }));
-//   } catch (e) {
-//     log.debug(`Failed to get methods for ${obj.getName()}: ${e.message}`);
-//   }
-//   let interfaces = [];
-//   try {
-//     interfaces = (def.getImplementing() || []).map((i) =>
-//       typeof i.getName === "function" ? i.getName() : String(i)
-//     );
-//   } catch (e) {
-//     log.debug(`Failed to get interfaces for ${obj.getName()}: ${e.message}`);
-//   }
-//   return {
-//     name: obj.getName(),
-//     superClass: def.getSuperClass() || null,
-//     interfaces,
-//     isFinal: def.isFinal(),
-//     isAbstract: def.isAbstract(),
-//     methodCount: methods.length,
-//     methods,
-//   };
-// }
-
-//IYH1HC add
 // Rich class skeleton: methods with full parameter signatures + raises,
 // attributes, constants, events, type definitions. Covers what an LLM needs
 // to reason about the public contract without seeing implementation bodies.
@@ -267,7 +219,6 @@ function _buildClassSkeleton(obj) {
   };
 }
 
-//IYH1HC add
 // Interface skeleton mirrors class skeleton but omits class-only fields
 // (no superClass, no createVisibility, no static/instance distinction —
 // everything in an interface is implicitly public + instance unless declared
@@ -296,9 +247,7 @@ function _buildInterfaceSkeleton(obj) {
   };
 }
 
-//IYH1HC add
 // Helpers shared by class and interface skeleton builders.
-
 function _extractMethods(def, ownerName) {
   try {
     const defs = def.getMethodDefinitions();
@@ -439,7 +388,6 @@ function _extractTypeDefs(def, ownerName) {
   }
 }
 
-//IYH1HC add
 // Best-effort string rendering for an abaplint AbstractType. Order of preference:
 // toABAP() (most readable, e.g. "REF TO ZCL_FOO"), then toText() with markdown
 // fences stripped, then qualifiedName / DDIC name, then constructor name.
@@ -505,14 +453,8 @@ function _safeCall(target, method) {
   }
 }
 
-//IYH1HC add
 // Extract per-class cyclomatic complexity and method length metrics from a parsed Registry.
 // Uses CyclomaticComplexityStats.run() and MethodLengthStats.run() static methods.
-//IYH1HC comment — old loop walked registry.getObjects() with `if (obj.getType() !== "CLAS")`
-//IYH1HC comment — which silently skipped INTF/PROG. Plus it dropped abaplint errors,
-//IYH1HC comment — so any per-class throw landed in "0 classes" metrics with no signal.
-//IYH1HC add — Track every walked CLAS, never silently skip; surface per-object failures
-//IYH1HC add — via log.debug so we can diagnose when CC/ML stats return empty.
 function extractMetrics(registry) {
   const results = [];
   let walked = 0;
@@ -536,11 +478,6 @@ function extractMetrics(registry) {
       log.debug(`extractMetrics: MethodLengthStats threw for ${obj.getName()}: ${e.message}`);
     }
 
-    //IYH1HC comment — was `methodMap = {}` which inherits from Object.prototype.
-    //IYH1HC comment — ABAP `CONSTRUCTOR` method → name "constructor" → methodMap.constructor
-    //IYH1HC comment — returns the inherited Object function (read-only .length=1) → assignment
-    //IYH1HC comment — `.length = ml.count` throws "Cannot assign to read only property 'length' of function".
-    //IYH1HC add — Object.create(null) gives a prototype-less object; no inherited keys, safe to use any method name.
     const methodMap = Object.create(null);
     for (const cc of ccResults) {
       if (!methodMap[cc.name]) methodMap[cc.name] = Object.create(null);
@@ -579,7 +516,6 @@ function extractMetrics(registry) {
   return results.sort((a, b) => b.maxComplexity - a.maxComplexity);
 }
 
-//IYH1HC add
 // Run PrettyPrinter on every ABAP file in the Registry.
 // Returns an array of { filename, source } for all formatted files.
 function applyPrettyPrinter(registry) {
@@ -600,7 +536,6 @@ function applyPrettyPrinter(registry) {
   return formatted;
 }
 
-//IYH1HC add
 // Apply all auto-fixable issues in the Registry via Edits.applyEditList.
 // Returns { applied, files } where files has the updated source per filename.
 // Quick-fix edits may conflict if two fixes touch the same range — wraps in try/catch.
@@ -677,7 +612,6 @@ module.exports = {
   lintFiles,
   normalizeIssue,
   summarize,
-  //IYH1HC add
   buildPackageRegistry,
   extractSkeleton,
   extractMetrics,

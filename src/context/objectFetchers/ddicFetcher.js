@@ -46,8 +46,6 @@ async function fetchDdicObject(client, node) {
     return {
       typeId: node.typeId,
       name: node.name,
-      //IYH1HC add — node carries the adtcore:description from the package
-      //IYH1HC add — walker; structureXml's blue:wbobj/doma:domain don't expose it.
       description: node.description || null,
       uri: url,
       structureXml,
@@ -63,12 +61,8 @@ async function fetchDdicObject(client, node) {
 async function _fetchFieldsMeta(client, name) {
   const url = `/sap/bc/adt/datapreview/ddic/${encodeURIComponent(String(name).toUpperCase())}/metadata`;
   const res = await client.send("GET", url, {
-    //IYH1HC comment - accept: "application/vnd.sap.adt.ddic.entitymetadata+xml, application/xml;q=0.8",
-    //IYH1HC add - server requires datapreview.table.v1+xml (matches commands/data.js:ddic-meta)
     accept: "application/vnd.sap.adt.datapreview.table.v1+xml, application/xml;q=0.8",
   });
-  //IYH1HC comment - if (!res || !res.body) return null;
-  //IYH1HC add - client.send does NOT throw on non-2xx; res.body is set even on error XML.
   if (!res || !res.ok || !res.body) return null;
   return res.body;
 }
@@ -83,9 +77,6 @@ function _inferUrl(node) {
   return null;
 }
 
-//IYH1HC add
-// Phase A1: abapGit-style raw XML fetch for `adt object pull`.
-//
 // Returns { files: [{ filename, content }] } so the pull command can write
 // the file as-is. The XML body is the raw ADT response (Accept: */*) — we do
 // NOT re-serialize or normalize, the on-disk file is what SAP gave us.
@@ -107,7 +98,6 @@ function _abapGitExtensionFor(typeId) {
   return null;
 }
 
-//IYH1HC add
 async function fetchAsAbapGitFile(client, node) {
   const url = node.uri || _inferUrl(node);
   if (!url) {
@@ -140,6 +130,5 @@ module.exports = {
   fetchDdicObject,
   isDdicTypeId,
   SUPPORTED_DDIC_TYPE_IDS,
-  //IYH1HC add
   fetchAsAbapGitFile,
 };

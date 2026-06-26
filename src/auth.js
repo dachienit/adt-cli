@@ -81,8 +81,8 @@ async function headerFor(profile) {
   if (!profile) return null;
 
   // Explicit env override beats everything (handy for CI / agents).
-  //if (process.env.ADT_BEARER) return `bearer ${process.env.ADT_BEARER}`; IYH1HC comment
-  if (process.env.ADT_BEARER) return `Bearer ${process.env.ADT_BEARER}`; // IYH1HC added
+  //if (process.env.ADT_BEARER) return `bearer ${process.env.ADT_BEARER}`;
+  if (process.env.ADT_BEARER) return `Bearer ${process.env.ADT_BEARER}`;
   if (process.env.ADT_BASIC) return `Basic ${process.env.ADT_BASIC}`;
 
   const kind = (profile.kind || "basic").toLowerCase();
@@ -98,12 +98,16 @@ async function headerFor(profile) {
     }
     return `bearer ${profile.accessToken}`;
   }
+  if (kind === "basicsso") {
+    return null;
+  }
   if (kind === "destination") {
     if (!profile.destinationName)
       throw new Error('Destination profile needs "destinationName".');
+    const userJwt = process.env.ADT_USER_JWT || profile.userJwt;
     const rec = await destinations.resolveDestination(profile.destinationName, {
       iss: profile.iss,
-      userJwt: profile.userJwt,
+      userJwt,
       serviceBindingJson: profile.serviceBindingJson,
     });
     // Materialize the resolved destination on the in-memory profile so the
@@ -116,14 +120,14 @@ async function headerFor(profile) {
     // not the destination's own auth. Only meaningful with NoAuthentication
     // (per the SDK docs) but we still honour the property if it's set.
     if (rec.forwardAuthToken) {
-      if (!profile.userJwt) {
+      if (!userJwt) {
         log.warn(
           `Destination "${rec.name}" has forwardAuthToken=true but no user JWT was supplied ` +
             "(--user-jwt or ADT_USER_JWT). Sending request without Authorization."
         );
         return null;
       }
-      return `Bearer ${profile.userJwt}`;
+      return `Bearer ${userJwt}`;
     }
     return rec.authHeader || null;
   }

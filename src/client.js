@@ -16,11 +16,14 @@ const https = require("https");
 const log = require("./logger");
 const xml = require("./xml");
 const auth = require("./auth");
+const config = require("./config"); //basic SSO add — persist/reuse the basicsso MYSAPSSO2 ticket on the profile
 
 class AdtClient {
   constructor(profile, options = {}) {
     if (!profile) throw new Error("AdtClient: profile is required.");
-    if (!profile.url) throw new Error('AdtClient: profile.url is required (e.g. "https://host:port").');
+    if (!profile.url && (profile.kind || "basic").toLowerCase() !== "destination") {
+      throw new Error('AdtClient: profile.url is required (e.g. "https://host:port").');
+    }
     this.profile = profile;
     this.cookies = new Map(); // name -> value
     this.csrfToken = null;
@@ -39,6 +42,39 @@ class AdtClient {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
       this._agent = new https.Agent({ rejectUnauthorized: false });
     }
+
+    this._loadedSso = null;
+    if (
+      (profile.kind || "").toLowerCase() === "basicsso" &&
+      profile.ssoToken &&
+      profile.name &&
+      (!profile.ssoUser || profile.ssoUser === currentOsUser())
+    ) {
+      this.cookies.set("MYSAPSSO2", profile.ssoToken);
+      this._loadedSso = profile.ssoToken;
+      log.debug("Reusing stored SSO ticket (skipping SPNEGO unless rejected).");
+    }
+  }
+
+  _persistSsoIfChanged() {
+    if ((this.profile.kind || "").toLowerCase() !== "basicsso" || !this.profile.name) return;
+    const tok = this.cookies.get("MYSAPSSO2");
+    if (tok && tok !== this._loadedSso) {
+      try {
+        config.saveSsoTicket(this.profile.name, currentOsUser(), tok);
+        this._loadedSso = tok;
+        log.debug("SSO ticket saved to profile for reuse.");
+      } catch (e) {
+        log.debug(`Could not persist SSO ticket: ${e.message}`);
+      }
+    }
+  }
+
+  _doFetch(url, opts) {
+    if (this._dispatcher) {
+      return this._undici.fetch(url, { ...opts, dispatcher: this._dispatcher });
+    }
+    return fetch(url, opts);
   }
 
   setStateful(stateful) {
@@ -176,10 +212,6 @@ class AdtClient {
       }
     }
 
-/*     // IYH1HC comment
-    const ck = this.cookieHeader();
-    if (ck) headers.set("Cookie", ck); */
-
     // Honor the active session mode unless the caller has set it explicitly.
     if (!headers.has("X-sap-adt-sessiontype")) {
       headers.set("X-sap-adt-sessiontype", this.session);
@@ -190,7 +222,6 @@ class AdtClient {
       if (tok && !headers.has("x-csrf-token")) headers.set("x-csrf-token", tok);
     }
 
-    // IYH1HC add
     // Set cookie AFTER ensureCsrf might have populated it.
     const ck = this.cookieHeader();
     if (ck) headers.set("Cookie", ck);
@@ -225,9 +256,6 @@ class AdtClient {
       body,
       redirect: "manual",
     };
-    if (this._agent) fetchOpts.dispatcher = undefined; // global fetch uses undici; agent option ignored.
-
-    //IYH1HC add — Per-call timeout via AbortController.
     // Node's global fetch() has NO default timeout — a stalled server holds the
     // socket open until the OS kills it (can be tens of minutes). One slow
     // endpoint in a bulk operation (e.g. adt object pull) would then freeze the
@@ -241,22 +269,34 @@ class AdtClient {
 
     let res;
     try {
-      res = await fetch(url, fetchOpts);
+      res = await this._doFetch(url, fetchOpts); 
     } catch (e) {
-      //IYH1HC add — surface timeout as a clear, distinct error
       if (e && e.name === "AbortError") {
         const msg = `timeout after ${timeoutMs}ms at ${url.pathname}${url.search}`;
         log.err(`Network timeout: ${msg}`);
         throw new Error(msg);
       }
-      log.err(`Network error: ${e.message}`);
+      const cause = e && e.cause ? (e.cause.code || e.cause.message || String(e.cause)) : "";
+      log.err(`Network error: ${e.message}${cause ? ` (cause: ${cause})` : ""}`);
       throw e;
     } finally {
-      //IYH1HC add
       clearTimeout(timer);
     }
 
     this.storeSetCookies(res.headers);
+    this._persistSsoIfChanged();
+    if (
+      res.status === 401 &&
+      (this.profile.kind || "").toLowerCase() === "basicsso" &&
+      !options._ssoRetried
+    ) {
+      const wa = res.headers.get("www-authenticate") || "";
+      if (/negotiate/i.test(wa)) {
+        this.cookies.delete("MYSAPSSO2");
+        await this._performSpnego(url);
+        return this.request(method, pathOrUrl, { ...options, _ssoRetried: true });
+      }
+    }
 
     // Refresh CSRF if rejected.
     if (res.status === 403 && isMutating && !options._internalSkipCsrf) {
@@ -277,6 +317,57 @@ class AdtClient {
     }
 
     return res;
+  }
+
+  async _performSpnego(url) {
+    const spn = this.profile.spn;
+    if (!spn) throw new Error('basicsso profile needs "spn" (e.g. SAP/S1RSNCAD).');
+    let kerberos;
+    try {
+      kerberos = require("kerberos");
+    } catch (e) {
+      throw new Error(`basicsso auth requires the "kerberos" package to be installed: ${e.message}`);
+    }
+    log.step(`SPNEGO handshake for ${spn}`);
+    const client = await kerberos.initializeClient(spn, {});
+    try {
+      let challenge = ""; // empty on the first leg
+      for (let leg = 0; leg < 6; leg++) {
+        const token = await client.step(challenge);
+        const headers = new Headers();
+        headers.set("User-Agent", this.userAgent);
+        headers.set("X-Requested-With", "XMLHttpRequest");
+        headers.set("Accept", "application/atomsvc+xml");
+        headers.set("Authorization", `Negotiate ${token}`);
+        const ck = this.cookieHeader();
+        if (ck) headers.set("Cookie", ck);
+        const r = await this._doFetch(url, { method: "GET", headers, redirect: "manual" });
+        this.storeSetCookies(r.headers);
+        if (r.status !== 401) {
+          log.ok(`SPNEGO established (HTTP ${r.status}).`);
+          return;
+        }
+        const wa = r.headers.get("www-authenticate") || "";
+        const m = wa.match(/Negotiate\s+([A-Za-z0-9+/=]+)/i);
+        if (!m) {
+          throw new Error(
+            `SPNEGO rejected by ${url.host}: server fell back to "${wa || "Basic"}". ` +
+              "Web-SSO (SPNEGO) is not enabled for this system, or it requires channel binding " +
+              "(Extended Protection), which is unsupported."
+          );
+        }
+        challenge = m[1]; // mutual-auth / multi-leg continuation token
+      }
+      throw new Error("SPNEGO handshake did not complete within 6 legs.");
+    } finally {
+      if (client && typeof client.cleanUp === "function") {
+        try {
+          await client.cleanUp();
+        } catch (_) {
+          // Ignore cleanup errors — the handshake result is what matters.
+        }
+      }
+    }
   }
 
   // Convenience: read body as text + optional XML->JSON parse.
@@ -302,8 +393,6 @@ class AdtClient {
 
     const ok = res.status >= 200 && res.status < 300;
     if (!ok) {
-      //IYH1HC add - allow callers to suppress ERR logs for expected statuses
-      // (e.g. 404 when probing optional resources like long texts).
       const silent =
         Array.isArray(options.silentStatuses) && options.silentStatuses.includes(res.status);
       if (!silent) {
@@ -325,6 +414,12 @@ class AdtClient {
       raw: buf,
     };
   }
+}
+
+function currentOsUser() {
+  const domain = process.env.USERDOMAIN || "";
+  const user = process.env.USERNAME || process.env.USER || "";
+  return domain ? `${domain}\\${user}` : user;
 }
 
 function headersToObject(h) {

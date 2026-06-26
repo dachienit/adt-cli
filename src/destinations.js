@@ -180,7 +180,7 @@ function normalizeLocalEnvDestination(d) {
     url: trim(d.url),
     authType: d.authentication || (authHeader ? "BasicAuthentication" : "NoAuthentication"),
     authHeader,
-    forwardAuthToken: truthy(d.forwardAuthToken), //IYH1HC add
+    forwardAuthToken: truthy(d.forwardAuthToken),
     sapClient: d["sap-client"] || null,
     language: d.language || null,
     additionalHeaders,

@@ -1,14 +1,5 @@
 "use strict";
 
-//IYH1HC comment - // `adt object pull` - pull an ABAP package from the SAP system to local disk.
-//IYH1HC comment - //
-//IYH1HC comment - //   adt object pull --package <PKG> [--out <dir>] [--skip-unsupported] [--max <n>]
-//IYH1HC comment - //
-//IYH1HC comment - // Files are written in abapGit convention (e.g. zcl_foo.clas.abap).
-//IYH1HC comment - // A manifest (.abap-package.json) is written alongside the source files so
-//IYH1HC comment - // downstream tooling (Octo LLM) knows what was pulled and from where.
-
-//IYH1HC add
 // `adt object pull` — mirror an entire ABAP package (recursive) to local disk.
 //
 //   adt object pull --package <PKG>
@@ -44,16 +35,11 @@ const fs = require("fs");
 const path = require("path");
 
 const log = require("../logger");
-//IYH1HC comment - const objLib = require("../objLib");
-//IYH1HC comment - const adapter = require("../abaplintAdapter");
-//IYH1HC add
 const pullRegistry = require("../pullRegistry");
 const pullConfig = require("../pullConfig");
 const { walkPackage } = require("../context/packageWalker");
 const { fetchDependenciesForPull } = require("../context/dependencyGraph");
 
-//IYH1HC comment - const SCHEMA_VERSION = 2;
-//IYH1HC add — v3 introduces unified inventory[] array (status enum)
 const SCHEMA_VERSION = 3;
 
 function _parseCsv(value) {
@@ -99,12 +85,10 @@ function register(object) {
     .option("--no-docs", "do not fetch long-text docs (reserved)")
     .option("--keep-going", "continue when one object fetch fails")
     .option("--skip-unsupported", "suppress warnings for unknown object types")
-    //IYH1HC add
     .option(
       "--namespace-prefixes <list>",
       "comma-separated name prefixes (Z,Y,/RB...). Overrides config. Empty = pull nothing."
     )
-    //IYH1HC add
     .option(
       "--print-config",
       "print the effective pull config (resolved typeIds + namespaces) as JSON and exit"
@@ -118,11 +102,8 @@ function register(object) {
       const includeOnly = _parseCsv(opts.includeOnly);
       const skipTypes = _parseCsv(opts.skipTypes) || [];
       const keepGoing = !!opts.keepGoing;
-      //IYH1HC add — null when flag not passed; [] when user passed empty CSV
       const cliNamespacePrefixes =
         opts.namespacePrefixes != null ? _parseCsv(opts.namespacePrefixes) || [] : null;
-
-      //IYH1HC add — resolve effective pull policy (types + namespaces)
       const {
         types: effectiveTypes,
         namespacePrefixes,
@@ -135,7 +116,6 @@ function register(object) {
         cliNamespacePrefixes,
       });
 
-      //IYH1HC add — --print-config short-circuit (no SAP traffic)
       if (opts.printConfig) {
         log.info(`Effective pull config: types from ${configSource}; namespaces from ${namespaceSource}`);
         console.log(
@@ -179,7 +159,7 @@ function register(object) {
 
       fs.mkdirSync(outDir, { recursive: true });
 
-      //IYH1HC add — single-loop inventory builder.
+      //Single-loop inventory builder.
       // Every walked node ends up in inventory[] with a final status:
       //   "pulled"        — fetched OK, files written
       //   "not-in-config" — known typeId but not in effective pullTypes (also: --max reached)
@@ -225,7 +205,6 @@ function register(object) {
           continue;
         }
 
-        //IYH1HC add — namespace gate (safe-by-default: empty list = block all)
         if (!pullConfig.matchesNamespace(node.name, namespacePrefixes)) {
           inventory.push({
             ...base,
@@ -265,7 +244,6 @@ function register(object) {
         }
 
         try {
-          //IYH1HC add — pass namespacePrefixes so FUGR fetcher can drop standard children
           const result = await strategy.fetch(client, node, { namespacePrefixes });
           const files = result && Array.isArray(result.files) ? result.files : [];
           if (files.length === 0) {
@@ -348,10 +326,8 @@ function register(object) {
         pulledAt: new Date().toISOString(),
         depth: depth === Infinity ? null : depth,
         effectivePullTypes: effectiveTypes,
-        //IYH1HC add
         effectiveNamespacePrefixes: namespacePrefixes,
         configSource,
-        //IYH1HC add
         namespaceSource,
         objectCount: pulledCount,
         fileCount,
@@ -368,7 +344,6 @@ function register(object) {
       const notInConfig = inventory.filter(
         (i) => i.status === "not-in-config"
       ).length;
-      //IYH1HC add
       const notInNamespace = inventory.filter(
         (i) => i.status === "not-in-namespace"
       ).length;

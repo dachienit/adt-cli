@@ -72,9 +72,6 @@ function _extractFromTables(source) {
   return Array.from(out);
 }
 
-//IYH1HC add
-// Phase A1: abapGit-style raw source fetch for `adt object pull`.
-//
 // CDS sources are pure DDL text. abapGit convention:
 //   DDLS/DF, DDLS/DL  -> <name>.ddls.asddls
 //   DCLS/DL           -> <name>.dcls.asdcls
@@ -86,7 +83,6 @@ function _abapGitExtensionFor(typeId) {
   return null;
 }
 
-//IYH1HC add
 async function fetchAsAbapGitFile(client, node) {
   const name = String(node.name).toLowerCase();
   const baseUrl =
@@ -113,6 +109,5 @@ module.exports = {
   fetchCdsObject,
   isCdsTypeId,
   CDS_TYPE_IDS,
-  //IYH1HC add
   fetchAsAbapGitFile,
 };

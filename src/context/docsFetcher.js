@@ -56,16 +56,12 @@ async function _tryFetchText(client, url) {
   try {
     const res = await client.send("GET", url, {
       accept: "text/html, text/plain, */*",
-      //IYH1HC add - long text is optional; 404/405/501 are expected for objects
-      // without any long text. Silence the ERR log spam from client.send.
       silentStatuses: [404, 405, 501],
     });
     if (!res || !res.ok) return null;
     const text = (res.text || "").trim();
     return text || null;
   } catch (e) {
-    //IYH1HC comment - dead branch: client.send does NOT throw on non-2xx,
-    //IYH1HC comment - but keep for genuine network errors.
     const status = e && e.response && e.response.status;
     if (status === 404 || status === 405 || status === 501) return null;
     log.debug(`docsFetcher: ${url} -> ${e.message}`);

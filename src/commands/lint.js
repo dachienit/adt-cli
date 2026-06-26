@@ -23,7 +23,6 @@ const log = require("../logger");
 const objLib = require("../objLib");
 const adapter = require("../abaplintAdapter");
 const { renderJson } = require("../output");
-//IYH1HC add
 const { fetchObjectAsMemoryFiles, inferUrlFromTypeAndName } = objLib;
 
 // ---------------------------------------------------------------------------
@@ -53,9 +52,6 @@ function inferTypeAndName(objectUrl) {
     name: decodeURIComponent(m[2]).toUpperCase(),
   };
 }
-
-//IYH1HC comment — moved to objLib.fetchObjectAsMemoryFiles
-// async function fetchObjectAsMemoryFiles(client, objectUrl, typeId, name, includeOverride) { ... }
 
 // ---------------------------------------------------------------------------
 // Command registration
@@ -125,7 +121,6 @@ function register(lint) {
     )
     .argument("<filePath>", "path to a local .abap file")
     .option("--config <path>", "abaplint config file")
-    //IYH1HC add
     .option(
       "--type <kind>",
       "force object type: class|interface|program|include (auto-detected from filename prefix if omitted)"
@@ -139,7 +134,6 @@ function register(lint) {
       const raw = fs.readFileSync(abs, "utf8");
       const abaplint = require("@abaplint/core");
 
-      //IYH1HC add
       const abapgitName = resolveAbapgitFilename(path.basename(abs), opts.type);
       if (abapgitName !== path.basename(abs)) {
         log.info(`Filename mapped to abapGit convention: ${path.basename(abs)} -> ${abapgitName}`);
@@ -177,7 +171,6 @@ function register(lint) {
       "skip object types not yet supported (default true)",
       true
     )
-    //IYH1HC add
     .option("--fix", "apply all auto-fixable issues (prints changed sources to stdout)")
     .action(async function (pkgName, opts) {
       const ctx = this.ctx;
@@ -217,11 +210,8 @@ function register(lint) {
       }
 
       const config = adapter.loadConfig({ configPath: opts.config, profile: ctx.getProfile() });
-
-      //IYH1HC add — use buildPackageRegistry to keep the registry instance for --fix
       const registry = adapter.buildPackageRegistry(allFiles, config);
 
-      //IYH1HC add
       let fixResult = null;
       if (opts.fix) {
         log.step("Applying auto-fixable issues...");
@@ -253,7 +243,6 @@ function register(lint) {
         totalIssues: normalized.length,
         errorCount: normalized.filter((i) => i.severity === "Error").length,
         warningCount: normalized.filter((i) => i.severity === "Warning").length,
-        //IYH1HC add
         ...(fixResult && { fixesApplied: fixResult.applied, fixedFiles: fixResult.files }),
         results,
       };
@@ -264,7 +253,6 @@ function register(lint) {
       });
     });
 
-  //IYH1HC add
   // ---------- adt lint skeleton --------------------------------------------
   lint
     .command("skeleton")
@@ -331,7 +319,6 @@ function register(lint) {
       });
     });
 
-  //IYH1HC add
   // ---------- adt lint metrics ---------------------------------------------
   lint
     .command("metrics")
@@ -395,7 +382,6 @@ function register(lint) {
       });
     });
 
-  //IYH1HC add
   // ---------- adt lint refs ------------------------------------------------
   lint
     .command("refs")
@@ -476,7 +462,6 @@ function register(lint) {
       });
     });
 
-  //IYH1HC add
   // ---------- adt lint format ----------------------------------------------
   lint
     .command("format")
@@ -556,9 +541,6 @@ function safeGetProfile(ctx) {
   }
 }
 
-//IYH1HC comment — moved to objLib.inferUrlFromTypeAndName
-// function inferUrlFromTypeAndName(typeId, name) { ... }
-
 function countByType(nodes) {
   const counts = {};
   for (const n of nodes) {
@@ -567,7 +549,6 @@ function countByType(nodes) {
   return counts;
 }
 
-//IYH1HC add
 // Convert any .abap filename to the 3-part abapGit convention that abaplint
 // requires (abaplint silently skips files with fewer than 3 dot-separated parts).
 //

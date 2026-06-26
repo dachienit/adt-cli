@@ -69,7 +69,6 @@ function buildContextMd({ manifest, files, degradations, graph, metrics }) {
   }
   lines.push("");
 
-  //IYH1HC add — Phase 2: dependency + metrics summary blocks
   if (graph && (graph.nodeCount != null || graph.edgeCount != null)) {
     lines.push("## Dependency summary");
     lines.push("");
@@ -113,7 +112,6 @@ function buildContextMd({ manifest, files, degradations, graph, metrics }) {
   lines.push("1. **CONTEXT.md** (this file) — orient on what the package is and what's in this bundle.");
   lines.push("2. **manifest.json** — full object inventory with adtcore metadata; pick which objects to focus on.");
   lines.push("3. **structure.json** — class / interface / program skeletons with method signatures, attributes, events.");
-  //IYH1HC add — Phase 2 reading order entries
   lines.push("4. **dependencies.json** — follow call/inheritance/data-access edges to map information flow.");
   lines.push("5. **metrics.json** — identify complexity hotspots that warrant deeper investigation.");
   lines.push("6. Drill into specific sub-files only if the analysis step needs them (sources/, docs/, ddic.json, etc.).");

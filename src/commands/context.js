@@ -1,13 +1,5 @@
 "use strict";
 
-// `adt context <verb>` — assemble an LLM-ready context bundle from an ABAP
-// package.
-//
-// Phase 1 ships only `build` and only for the CLAS/INTF/PROG type set the
-// existing abaplintAdapter supports. The verb skeleton already accepts the
-// full flag surface from the plan so Phase 2-4 can light up additional
-// behaviour without changing the public CLI shape.
-
 const path = require("path");
 const fs = require("fs");
 
@@ -16,10 +8,7 @@ const adapter = require("../abaplintAdapter");
 const { walkPackage } = require("../context/packageWalker");
 const { buildBundleForPackage } = require("../context/builder");
 const { renderJson } = require("../output");
-//IYH1HC add — Phase 4
 const tokenBudget = require("../context/tokenBudget");
-//IYH1HC add — reuse pull-config namespace resolver to keep `context build`
-//IYH1HC add — and `object pull` aligned on which namespaces are customer-owned.
 const pullConfig = require("../pullConfig");
 
 const DEFAULT_OUT_DIR = "./adt-context";
@@ -53,9 +42,6 @@ function register(context) {
       "comma-separated typeId families (CLAS,INTF,PROG,FUGR,DDIC,CDS); Phase 1 ignores"
     )
     .option("--max <n>", "max objects per package to process", "500")
-    //IYH1HC add — drop SAP-standard FUGR child includes (LSVIM*, RSVIM*, …)
-    //IYH1HC add — that SE54-generated function groups carry; matches `adt object pull`
-    //IYH1HC add — semantics. Empty value (`--namespace-prefixes ""`) blocks all.
     .option(
       "--namespace-prefixes <csv>",
       "comma-separated name prefixes to keep (overrides pull-config); e.g. Z,Y,/RB"
@@ -78,7 +64,6 @@ function register(context) {
         ? "refuse"
         : "overwrite";
 
-      //IYH1HC add — depth defaults to unlimited; explicit "0" caps at root.
       const depth =
         opts.depth === undefined || opts.depth === null
           ? Infinity
@@ -103,14 +88,9 @@ function register(context) {
         profile: _safeProfile(ctx),
       });
 
-      //IYH1HC add — Phase 3: validate strip level + warn only on truly unimplemented flags.
       const stripLevel = _resolveStripLevel(opts.strip);
       _warnUnimplemented(opts);
 
-      //IYH1HC add — Resolve namespace prefixes via pull-config (same precedence
-      //IYH1HC add — chain that `adt object pull` uses: built-in → user → project → CLI).
-      //IYH1HC add — Without this filter, SE54-generated FUGRs (e.g. ZFG_ABAP_GEN)
-      //IYH1HC add — drag in LSVIM* standard includes whose source GETs can stall.
       const cliNamespacePrefixes =
         opts.namespacePrefixes !== undefined
           ? _parseCsvOrEmpty(opts.namespacePrefixes)
@@ -138,16 +118,13 @@ function register(context) {
           abaplintConfig,
           writeMode,
           targetModel: opts.targetModel || null,
-          //IYH1HC add — Phase 3 flags
           maxTokens: opts.maxTokens ? Number(opts.maxTokens) : null,
           includeSource: opts.includeSource === undefined ? false : opts.includeSource,
           stripLevel,
-          //IYH1HC add — Phase 4 flags
           withDocs: !!opts.withDocs,
           withWhereUsed: !!opts.withWhereUsed,
           keepGoing: !!opts.keepGoing,
           dryRun: !!opts.dryRun,
-          //IYH1HC add — forward namespace filter to FUGR fetcher
           namespacePrefixes,
         });
         results.push({ package: pkgName, ...result });
@@ -181,7 +158,6 @@ function register(context) {
       if (hadErrors) process.exitCode = 1;
     });
 
-  //IYH1HC add — Phase 4: adt context inspect <bundle-dir>
   context
     .command("inspect")
     .description(
@@ -227,7 +203,6 @@ function register(context) {
       if (total > softCap) process.exitCode = 2;
     });
 
-  //IYH1HC add — Phase 4: adt context budget [--target-model <id>]
   context
     .command("budget")
     .description("Print the model context-window table used for adaptive degradation.")
@@ -248,7 +223,6 @@ function register(context) {
     });
 }
 
-//IYH1HC add — Phase 4 helper
 function _measureDirectory(dir) {
   let total = 0;
   for (const name of fs.readdirSync(dir)) {
@@ -261,8 +235,6 @@ function _measureDirectory(dir) {
 }
 
 function _warnUnimplemented(opts) {
-  //IYH1HC add — Phase 4 wires --with-docs and --with-where-used. Only --types
-  // remains unwired (object-type filtering is a usability tweak, not a blocker).
   const unimplemented = [];
   if (opts.types) unimplemented.push("--types");
   if (unimplemented.length > 0) {
@@ -270,7 +242,6 @@ function _warnUnimplemented(opts) {
   }
 }
 
-//IYH1HC add — Phase 3
 function _resolveStripLevel(stripOpt) {
   if (stripOpt === undefined) return null;
   // commander treats `[level]` as: `--strip` -> true (no value), `--strip=light` -> "light"
@@ -283,8 +254,6 @@ function _resolveStripLevel(stripOpt) {
   return v;
 }
 
-//IYH1HC add — `--namespace-prefixes ""` must surface as an explicit empty
-//IYH1HC add — array (safe-block all) rather than be treated as "no override".
 function _parseCsvOrEmpty(value) {
   if (value === undefined || value === null) return null;
   const parts = String(value)

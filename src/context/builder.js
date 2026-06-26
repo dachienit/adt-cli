@@ -24,11 +24,9 @@ const { fetchObjectMetadata, extractPackageMetadata } = require("./metadataExtra
 const { buildManifest, writeManifest } = require("./writers/manifestWriter");
 const { buildStructure, writeStructure } = require("./writers/structureWriter");
 const { buildContextMd, writeContextMd } = require("./writers/contextMdWriter");
-//IYH1HC add — Phase 2
 const { buildMetrics, writeMetrics } = require("./writers/metricsWriter");
 const { writeDependencies } = require("./writers/dependenciesWriter");
 const { buildDependencyGraph } = require("./dependencyGraph");
-//IYH1HC add — Phase 3
 const { fetchDdicObject, isDdicTypeId } = require("./objectFetchers/ddicFetcher");
 const { fetchFunctionGroup } = require("./objectFetchers/functionGroupFetcher");
 const { buildDdicEntry } = require("./skeleton/ddicSkeleton");
@@ -37,7 +35,6 @@ const { buildFunctionGroupSkeleton } = require("./skeleton/functionGroupSkeleton
 const { writeSources } = require("./writers/sourcesWriter");
 const { strip: stripSource, isLevel: isStripLevel, DEFAULT_LEVEL: DEFAULT_STRIP_LEVEL } = require("./sourceStripper");
 const { estimate, estimateObject, softCapFor, degrade, tokenizerName } = require("./tokenBudget");
-//IYH1HC add — Phase 4
 const { fetchCdsObject, isCdsTypeId } = require("./objectFetchers/cdsFetcher");
 const { fetchPackageLongText, fetchObjectLongText } = require("./docsFetcher");
 const { writeDocs } = require("./writers/docsWriter");
@@ -93,8 +90,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
   }
 
   // --- Classify nodes by type --------------------------------------------
-  //IYH1HC add — Phase 3 classification now spans CLAS/INTF/PROG/FUGR + DDIC.
-  //IYH1HC add — Phase 4 also handles CDS (DDLS).
   const abapNodes = []; // CLAS / INTF / PROG / INCL (abaplint-supported)
   const fugrNodes = []; // FUGR/F groups (specialized fetcher)
   const ddicNodes = []; // TABL / DTEL / DOMA / STRU / VIEW
@@ -147,7 +142,7 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
   const errors = [];
   const objectMetas = [];
   const memoryFiles = [];
-  //IYH1HC add — Phase 3: collect raw sources per filename for sources/ output,
+  // Collect raw sources per filename for sources/ output,
   // plus DDIC and FUGR sub-skeletons.
   const rawSources = {}; // filename -> raw text
   const ddicEntries = [];
@@ -177,10 +172,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
   for (const node of fugrNodes) {
     objectMetas.push(await _safeFetchMetadata(client, node, errors, opts));
     try {
-      //IYH1HC comment — const fetched = await fetchFunctionGroup(client, node);
-      //IYH1HC add — Forward namespace filter to drop SE54-generated standard
-      //IYH1HC add — includes (LSVIM*, RSVIM*, …) that would otherwise stall the
-      //IYH1HC add — per-child `/source/main` GETs and hang the whole bundle build.
       const fetched = await fetchFunctionGroup(client, node, {
         namespacePrefixes: opts.namespacePrefixes || null,
       });
@@ -208,7 +199,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     }
   }
 
-  //IYH1HC add — Phase 4: CDS (DDLS) ------------------------------------
   const cdsEntries = [];
   for (const node of cdsNodes) {
     objectMetas.push(await _safeFetchMetadata(client, node, errors, opts));
@@ -238,7 +228,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
 
   // --- Parse into abaplint Registry + extract rich skeleton --------------
   let skeleton = { classes: [], interfaces: [], programs: [], functionGroups: [] };
-  //IYH1HC add — Phase 2: reuse the parsed Registry for metrics + dependency graph
   let registry = null;
   let metricsList = [];
   let dependencyGraph = null;
@@ -247,11 +236,9 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
       const config = opts.abaplintConfig;
       registry = adapter.buildPackageRegistry(memoryFiles, config);
       skeleton = adapter.extractSkeleton(registry);
-      //IYH1HC add — Phase 2 metrics + dependency graph
       try {
         metricsList = adapter.extractMetrics(registry);
       } catch (e) {
-        //IYH1HC add — surface stack to logs so silent metrics failures are diagnosable.
         log.warn(`extractMetrics threw for ${pkgEntry.name}: ${e.message}`);
         if (e && e.stack) log.debug(e.stack);
         errors.push({ object: pkgEntry.name, stage: "metrics", error: e.message });
@@ -259,13 +246,11 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
       try {
         dependencyGraph = buildDependencyGraph(registry, skeleton, { package: pkgEntry.name });
       } catch (e) {
-        //IYH1HC add — same diagnostic visibility for dep-graph.
         log.warn(`buildDependencyGraph threw for ${pkgEntry.name}: ${e.message}`);
         if (e && e.stack) log.debug(e.stack);
         errors.push({ object: pkgEntry.name, stage: "dependency-graph", error: e.message });
       }
     } catch (e) {
-      //IYH1HC add
       log.warn(`abaplint-parse threw for ${pkgEntry.name}: ${e.message}`);
       if (e && e.stack) log.debug(e.stack);
       errors.push({ object: pkgEntry.name, stage: "abaplint-parse", error: e.message });
@@ -275,17 +260,12 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     log.info(`Package ${pkgEntry.name}: no source files fetched — skeleton will be empty.`);
   }
 
-  //IYH1HC add — Phase 3: merge FUGR sub-skeletons into the package skeleton.
-  // abaplint may not have produced a FUGR entry (parsing FUGR sources is
-  // unreliable across releases); always overwrite with our regex-derived
-  // FM skeletons if we have them.
   if (fugrSkeletons.length > 0) {
     const existing = new Map(skeleton.functionGroups.map((fg) => [fg.name, fg]));
     for (const fg of fugrSkeletons) existing.set(fg.name, fg);
     skeleton.functionGroups = Array.from(existing.values());
   }
 
-  //IYH1HC add — Phase 4: append CDS DDL outbound edges (CDS->TABL).
   if (cdsEntries.length > 0 && dependencyGraph) {
     for (const cds of cdsEntries) {
       const fromId = `DDLS:${cds.name}`;
@@ -313,7 +293,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     dependencyGraph.edgeCount = dependencyGraph.edges.length;
   }
 
-  //IYH1HC add — Phase 4: enrich with inbound where-used edges (opt-in).
   if (opts.withWhereUsed && dependencyGraph) {
     const internalForUsage = [...abapNodes, ...fugrNodes, ...ddicNodes, ...cdsNodes].filter((n) => n.uri);
     try {
@@ -323,7 +302,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     }
   }
 
-  //IYH1HC add — Phase 4: fetch long-text documentation when --with-docs is on.
   const docs = [];
   if (opts.withDocs) {
     try {
@@ -343,7 +321,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     log.info(`docs fetched: ${docs.length}`);
   }
 
-  //IYH1HC add — Phase 3: build sources/ payload (skeleton-first by default)
   let sourcesPayload = null;
   if (opts.includeSource) {
     sourcesPayload = _filterSourcesForInclude(rawSources, opts.includeSource);
@@ -383,7 +360,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     tokenEstimate: null,
   });
 
-  //IYH1HC add — Phase 3: token-budget degradation pass.
   const plan = {
     manifest,
     structure: structurePayload,
@@ -391,7 +367,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     metrics: metricsPayload,
     ddic: ddicPayload,
     sources: sourcesPayload,
-    //IYH1HC add — Phase 4
     docs: docs.length > 0 ? docs : null,
   };
   const degradationResult = degrade(plan, softCap);
@@ -401,7 +376,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
   const finalSources = plan.sources || null;
   const finalDdic = plan.ddic || null;
   const finalMetrics = plan.metrics || metricsPayload;
-  //IYH1HC add — Phase 4
   const finalDocs = plan.docs || null;
 
   // Compute per-section token estimates for manifest + CONTEXT.md.
@@ -414,7 +388,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
     sources: finalSources
       ? Object.values(finalSources).reduce((acc, t) => acc + estimate(t), 0)
       : 0,
-    //IYH1HC add — Phase 4
     docs: finalDocs ? finalDocs.reduce((acc, d) => acc + estimate(d.content || ""), 0) : 0,
   };
   perSection.total = Object.values(perSection).reduce((a, b) => a + b, 0);
@@ -438,7 +411,6 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
       tokens: perSection.sources,
     });
   }
-  //IYH1HC add — Phase 4
   if (finalDocs && finalDocs.length > 0) {
     files.push({
       name: "docs/",
@@ -461,14 +433,12 @@ async function buildBundleForPackage(client, pkgEntry, opts) {
   written.push(writeStructure(packageDir, structurePayload));
   written.push(writeDependencies(packageDir, dependenciesPayload));
   written.push(writeMetrics(packageDir, finalMetrics));
-  //IYH1HC add — Phase 3 writes (ddic + sources, optional).
   if (finalDdic) {
     written.push(writeDdic(packageDir, finalDdic));
   }
   if (finalSources && Object.keys(finalSources).length > 0) {
     written.push(...writeSources(packageDir, finalSources));
   }
-  //IYH1HC add — Phase 4 writes (docs, optional).
   if (finalDocs && finalDocs.length > 0) {
     written.push(...writeDocs(packageDir, finalDocs));
   }
@@ -513,8 +483,6 @@ function _safeInferUrl(node) {
     return null;
   }
 }
-
-//IYH1HC add — Phase 3 helpers
 
 async function _safeFetchMetadata(client, node, errors, opts) {
   try {

@@ -6,8 +6,6 @@
 // resolve falls back to a minimal `{ name, typeId, raw: ... }` record so
 // the downstream consumer at least sees the object exists.
 
-//IYH1HC add — surface raw XML shape so we can diagnose why fields/desc end
-//IYH1HC add — up empty on T4X. Only the first per-typeId is logged to avoid noise.
 const log = require("../../logger");
 const _shapeLogged = new Set();
 
@@ -22,7 +20,6 @@ function _logShapeOnce(typeId, structureXml, fieldsMeta) {
       ? Object.keys(fieldsMeta).slice(0, 10).join(", ")
       : "(missing)";
     log.info(`ddicSkeleton: first ${typeId} structureXml top-keys=[${structureKeys}] fieldsMeta top-keys=[${fieldsMetaKeys}]`);
-    //IYH1HC add — go 2 levels deep + dump fieldsMeta shape too
     _dumpShape("structureXml", structureXml, 2);
     if (fieldsMeta && typeof fieldsMeta === "object") {
       _dumpShape("fieldsMeta", fieldsMeta, 2);
@@ -32,7 +29,6 @@ function _logShapeOnce(typeId, structureXml, fieldsMeta) {
   }
 }
 
-//IYH1HC add — recursive shape dumper (attrs + children keys, max depth N).
 function _dumpShape(label, node, depth, prefix = "  ") {
   if (!node || typeof node !== "object" || depth < 0) return;
   for (const k of Object.keys(node).slice(0, 8)) {
@@ -63,10 +59,7 @@ function buildDdicEntry(fetchedRecord) {
   }
 
   const { typeId, name, description, structureXml, fieldsMeta } = fetchedRecord;
-  //IYH1HC add — diagnostic dump (once per typeId family)
   _logShapeOnce(typeId, structureXml, fieldsMeta);
-  //IYH1HC add — pass the walker-supplied description through so each builder
-  //IYH1HC add — can use it as fallback when the XML omits adtcore:description.
   let built;
   if (typeId.startsWith("TABL")) built = _buildTable(typeId, name, structureXml, fieldsMeta);
   else if (typeId.startsWith("STRU")) built = _buildTable(typeId, name, structureXml, fieldsMeta);
@@ -78,15 +71,6 @@ function buildDdicEntry(fetchedRecord) {
   return built;
 }
 
-//IYH1HC comment — old _buildTable/_buildDataElement/_buildDomain relied on a
-//IYH1HC comment — generic walker that never matched the modern ADT "blue" XML
-//IYH1HC comment — shape (verified via diagnostic dump on T4X / S4H). Replaced
-//IYH1HC comment — with type-specific path navigation.
-
-//IYH1HC add — Modern ADT XML for TABL/DT, TABL/DS, STRU/DS, VIEW/DV is
-//IYH1HC add — source-based (`<blue:blueSource>` carries only a `sourceUri`).
-//IYH1HC add — Real field rows live in the datapreview ddic-meta endpoint as
-//IYH1HC add — `<dataPreview:tableData>/<dataPreview:columns>` rows.
 function _buildTable(typeId, name, structureXml, fieldsMeta) {
   const root = (structureXml && structureXml["blue:blueSource"]) || {};
   const rootAttrs = _attrs(root);
@@ -104,8 +88,6 @@ function _buildTable(typeId, name, structureXml, fieldsMeta) {
   };
 }
 
-//IYH1HC add — DTEL XML wraps the data element inside <blue:wbobj><dtel:dataElement>.
-//IYH1HC add — All shape fields are direct children of dtel:dataElement.
 function _buildDataElement(typeId, name, structureXml) {
   const wbobj = (structureXml && structureXml["blue:wbobj"]) || {};
   const wbAttrs = _attrs(wbobj);
@@ -118,8 +100,6 @@ function _buildDataElement(typeId, name, structureXml) {
     type: "DTEL",
     description: wbAttrs["adtcore:description"] || null,
     typeKind,
-    //IYH1HC add — When typeKind=domain, typeName is the domain. For intrinsic
-    //IYH1HC add — types (CHAR / NUMC / DEC / …) typeName is the SAP built-in name.
     domain: typeKind === "domain" ? dtel["dtel:typeName"] || null : null,
     dataType: dtel["dtel:dataType"] || null,
     length: _toIntOrNull(dtel["dtel:dataTypeLength"]),
@@ -131,7 +111,6 @@ function _buildDataElement(typeId, name, structureXml) {
   };
 }
 
-//IYH1HC add — DOMA XML inlines all data in <doma:domain><doma:content>/<doma:*Information>.
 function _buildDomain(typeId, name, structureXml) {
   const domain = (structureXml && structureXml["doma:domain"]) || {};
   const domainAttrs = _attrs(domain);
@@ -154,10 +133,6 @@ function _buildDomain(typeId, name, structureXml) {
   };
 }
 
-//IYH1HC add — Pull field rows from the datapreview/ddic-meta response shape.
-//IYH1HC add — Verified on T4X: <dataPreview:tableData><dataPreview:columns>...
-//IYH1HC add — Each column carries <dataPreview:metadata> with the actual field
-//IYH1HC add — name / type / length / key flag.
 function _extractFieldsFromDataPreview(fieldsMeta) {
   if (!fieldsMeta || typeof fieldsMeta !== "object") return [];
   const tableData = fieldsMeta["dataPreview:tableData"];
@@ -173,8 +148,6 @@ function _normalizeDataPreviewColumn(col) {
   const md = col["dataPreview:metadata"];
   if (!md) return null;
   const a = _attrs(md);
-  //IYH1HC add — keyIndex > 0 means it IS part of the key (the value is the
-  //IYH1HC add — ordinal of that field within the primary key).
   const keyIndexRaw = a["dataPreview:keyIndex"];
   const keyIndex = keyIndexRaw === undefined ? null : Number(keyIndexRaw);
   return {

@@ -7,6 +7,7 @@
 //   adt object properties <objectUri>
 //   adt object source     <objectUrl> [--include I] [--version V] [--output F]
 //   adt object versions   <objectUrl> [--include I]
+//   adt object list       [--package PKG | --parent-type T --parent-name N] [--user U] [--json]
 //
 // Write:
 //   adt object set-source <objectUrl> [--file F | --source-stdin] [--include I]
@@ -86,6 +87,31 @@ function register(object) {
         process.stdout.write(text);
         if (!text.endsWith("\n")) process.stdout.write("\n");
       }
+    });
+
+  //List the children of a tree node (package or sub-package) via
+  // the repository nodestructure endpoint. Emits the full { nodes, categories,
+  // objectTypes } payload so consumers can rebuild an Eclipse-style category tree.
+  object
+    .command("list")
+    .description("List the direct children of an ADT tree node (package / sub-package).")
+    .option("--package <pkg>", "package name (shorthand for --parent-type DEVC/K --parent-name <pkg>)")
+    .option("--parent-type <type>", "ADT parent type, e.g. DEVC/K", "DEVC/K")
+    .option("--parent-name <name>", "ADT parent name")
+    .option("--parent-tech-name <name>", "ADT parent technical name (defaults to --parent-name)")
+    .option("--user <user>", "scope local objects to a user (for $TMP)")
+    .option("--json", "emit JSON (default output is already JSON)")
+    .action(async function (opts) {
+      const ctx = this.ctx;
+      const parentName = opts.package || opts.parentName;
+      const parentType = opts.package ? "DEVC/K" : opts.parentType;
+      const result = await objLib.listNodes(ctx.getClient(), {
+        parentType,
+        parentName,
+        parentTechName: opts.parentTechName || parentName,
+        userName: opts.user,
+      });
+      renderJson(result, ctx.globalOpts);
     });
 
   object

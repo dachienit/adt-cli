@@ -50,6 +50,8 @@ coverage/
 dist/
 build/
 
+docs/
+scratch/
 conn-key.json
 dest-key.json
 xsuaa-key.json

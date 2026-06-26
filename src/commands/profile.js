@@ -2,10 +2,8 @@
 
 // `adt auth profile` subcommands - manage saved profiles.
 
-//IYH1HC add
 const path = require("path");
 const fs = require("fs");
-//IYH1HC add
 const log = require("../logger");
 const config = require("../config");
 const { renderJson } = require("../output");
@@ -36,6 +34,7 @@ function register(profile) {
         clientSecret: p.clientSecret ? "<set>" : null,
         refreshToken: p.refreshToken ? "<set>" : null,
         accessToken: p.accessToken ? "<set>" : null,
+        ssoToken: p.ssoToken ? "<set>" : null,
       });
     });
 
@@ -65,7 +64,6 @@ function register(profile) {
       console.log(config.CONFIG_FILE);
     });
 
-  //IYH1HC add
   // Attach an abaplint config (json/jsonc) to a profile so that `adt lint`
   // commands automatically pick it up when no --config flag is passed.
   profile

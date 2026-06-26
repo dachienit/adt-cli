@@ -26,22 +26,14 @@
 const objLib = require("../../objLib");
 const adapter = require("../../abaplintAdapter");
 const log = require("../../logger");
-//IYH1HC add — namespace matcher lives in its own module to avoid the cycle
-//IYH1HC add — pullConfig → pullRegistry → fugrFetcher → pullConfig.
 const { matchesNamespace } = require("../../namespaceUtil");
 
 const FUGR_NODE_PARENT_TYPE = "FUGR/F";
 
-//IYH1HC comment - async function fetchFunctionGroup(client, node) {
-//IYH1HC add — opts.namespacePrefixes lets us drop standard SAP includes
-// (LSVIMTOP, LSVIMF01, ...) that SE54 auto-generates inside table-maintenance
-// FUGRs. Without this filter the fetcher loops through every standard include
-// and stalls on slow `/source/main` GETs (root cause of the original hang).
 async function fetchFunctionGroup(client, node, opts = {}) {
   const groupName = String(node.name).toUpperCase();
   const lower = groupName.toLowerCase();
   const groupUrl = node.uri || `/sap/bc/adt/functions/groups/${encodeURIComponent(lower)}`;
-  //IYH1HC add
   const namespacePrefixes = Array.isArray(opts.namespacePrefixes)
     ? opts.namespacePrefixes
     : null;
@@ -63,9 +55,6 @@ async function fetchFunctionGroup(client, node, opts = {}) {
     }
   }
 
-  //IYH1HC add — drop children outside the configured namespaces BEFORE we
-  // attempt their source GET. Critical: ZFG_ABAP_GEN's standard SE54-generated
-  // includes (LSVIMTOP, LSVIMF01, ...) would otherwise stall the pull.
   if (namespacePrefixes !== null) {
     const before = children.length;
     const kept = children.filter((c) =>

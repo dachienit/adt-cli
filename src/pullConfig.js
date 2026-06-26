@@ -24,9 +24,6 @@ const path = require("path");
 
 const log = require("./logger");
 const pullRegistry = require("./pullRegistry");
-//IYH1HC add — keep matchesNamespace in a standalone module so that
-// functionGroupFetcher can import it without creating a circular dependency
-// (pullConfig → pullRegistry → fugrFetcher → pullConfig).
 const { matchesNamespace } = require("./namespaceUtil");
 
 // Built-in default — the single source of truth for "what does an out-of-box
@@ -61,11 +58,6 @@ const DEFAULT_PULL_TYPES = Object.freeze([
 // pulled. Standard SAP code (LSVIMTOP, RFC*, SAPL*, MFOO, ...) is excluded.
 // Used for bootstrap content + fallback when a config file omits the field.
 const DEFAULT_NAMESPACE_PREFIXES = Object.freeze(["Z", "Y", "/RB"]);
-
-//IYH1HC comment - matchesNamespace moved to src/namespaceUtil.js to break the
-//IYH1HC comment - pullConfig → pullRegistry → fugrFetcher → pullConfig cycle.
-//IYH1HC comment - Re-exported below via module.exports for backward compat.
-
 const CONFIG_FILE_NAME = "pull-config.json";
 
 function _userConfigPath() {

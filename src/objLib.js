@@ -9,7 +9,6 @@
 const log = require("./logger");
 const xml = require("./xml");
 const { ensureOk } = require("./output");
-//IYH1HC add
 const adapter = require("./abaplintAdapter");
 
 // Convert a partial path or a full /sap/bc/adt URL into the URL the server expects.
@@ -212,22 +211,23 @@ async function getSource(client, objectUrl, opts = {}) {
   return res.text;
 }
 
-//IYH1HC add
-// List the direct contents of an ABAP package using the ADT nodestructure
-// endpoint. Returns a flat array of { typeId, name, uri, description } entries.
-// Used by `adt lint package <pkg>` to enumerate objects to lint.
-async function listPackageContents(client, packageName) {
-  if (!packageName) throw new Error("packageName is required");
-  const pkg = String(packageName).toUpperCase();
+// List the direct children of any ADT tree node using the repository
+// nodestructure endpoint (mirror of abap-adt-api's nodeContents). Returns the
+// full tree payload { nodes, categories, objectTypes } so callers can rebuild
+// an Eclipse-style category tree, not just a flat object list.
+//   nodes:       [{ typeId, name, techName, uri, description, expandable }]
+//   categories:  raw SEU_ADT_OBJECT_CATEGORY_INFO records (CATEGORY / CATEGORY_LABEL)
+//   objectTypes: raw SEU_ADT_OBJECT_TYPE_INFO records (OBJECT_TYPE / CATEGORY_TAG / OBJECT_TYPE_LABEL)
+// parentType defaults to "DEVC/K" (a package). For $TMP, pass userName so the
+// server scopes local objects to that user.
+async function listNodes(client, opts = {}) {
+  const parentType = opts.parentType || "DEVC/K";
   const params = new URLSearchParams();
-  params.set("parent_name", pkg);
-  params.set("parent_tech_name", pkg);
-  params.set("parent_type", "DEVC/K");
+  params.set("parent_type", parentType);
+  if (opts.parentName) params.set("parent_name", String(opts.parentName).toUpperCase());
+  if (opts.parentTechName) params.set("parent_tech_name", String(opts.parentTechName).toUpperCase());
   params.set("withShortDescriptions", "true");
-  //IYH1HC add — removed "x-csrf-token": "fetch" from headers; client.js ensureCsrf()
-  // already fetches and injects the token automatically for all mutating requests.
-  // Passing "fetch" here overrides the real token (client.js line 190 skips injection
-  // when the header is already present), causing SAP to reject with 403.
+  if (opts.userName) params.set("user_name", String(opts.userName));
   const res = await client.send(
     "POST",
     `/sap/bc/adt/repository/nodestructure?${params.toString()}`,
@@ -236,36 +236,60 @@ async function listPackageContents(client, packageName) {
         "application/vnd.sap.as+xml; charset=UTF-8; dataname=com.sap.adt.RepositoryObjTreeContent",
     }
   );
-  ensureOk(res, "list-package-contents");
+  ensureOk(res, "list-nodes");
 
   // Body shape (fast-xml-parser):
   //   asx:abap > asx:values > DATA > TREE_CONTENT > SEU_ADT_REPOSITORY_OBJ_NODE [*]
-  // Each node carries OBJECT_TYPE, OBJECT_NAME, OBJECT_URI, DESCRIPTION, ...
+  //                                 > CATEGORIES   > SEU_ADT_OBJECT_CATEGORY_INFO [*]
+  //                                 > OBJECT_TYPES > SEU_ADT_OBJECT_TYPE_INFO [*]
   const data = walk(res.body, ["asx:abap", "asx:values", "DATA"]);
-  if (!data) return [];
-  const tree = data.TREE_CONTENT || {};
-  let nodes = tree.SEU_ADT_REPOSITORY_OBJ_NODE || [];
-  if (!Array.isArray(nodes)) nodes = [nodes];
+  if (!data) return { nodes: [], categories: [], objectTypes: [] };
 
-  const out = [];
-  for (const n of nodes) {
+  const rawNodes = toArray(walk(data, ["TREE_CONTENT", "SEU_ADT_REPOSITORY_OBJ_NODE"]));
+  const nodes = [];
+  for (const n of rawNodes) {
     const typeId = n.OBJECT_TYPE || n.object_type || n["@_OBJECT_TYPE"];
     const name = n.OBJECT_NAME || n.object_name || n["@_OBJECT_NAME"];
     const uri = n.OBJECT_URI || n.object_uri || n["@_OBJECT_URI"];
-    const description =
-      n.DESCRIPTION || n.description || n["@_DESCRIPTION"] || "";
-    if (!typeId || !name) continue;
-    out.push({
+    const techName = n.TECH_NAME || n.tech_name || n["@_TECH_NAME"] || "";
+    const description = n.DESCRIPTION || n.description || n["@_DESCRIPTION"] || "";
+    const expandable = String(n.EXPANDABLE || n["@_EXPANDABLE"] || "").toUpperCase() === "X";
+    if (!typeId || name == null) continue;
+    nodes.push({
       typeId: String(typeId),
       name: String(name),
+      techName: String(techName),
       uri: uri ? String(uri) : null,
       description: String(description),
+      expandable,
     });
   }
-  return out;
+
+  const categories = toArray(walk(data, ["CATEGORIES", "SEU_ADT_OBJECT_CATEGORY_INFO"]));
+  const objectTypes = toArray(walk(data, ["OBJECT_TYPES", "SEU_ADT_OBJECT_TYPE_INFO"]));
+  return { nodes, categories, objectTypes };
 }
 
-//IYH1HC add
+// List the direct contents of an ABAP package using the ADT nodestructure
+// endpoint. Returns a flat array of { typeId, name, uri, description } entries.
+// Used by `adt lint package <pkg>` to enumerate objects to lint. Thin wrapper
+// over listNodes() kept for backward-compat with the lint pipeline.
+async function listPackageContents(client, packageName) {
+  if (!packageName) throw new Error("packageName is required");
+  const pkg = String(packageName).toUpperCase();
+  const { nodes } = await listNodes(client, {
+    parentType: "DEVC/K",
+    parentName: pkg,
+    parentTechName: pkg,
+  });
+  return nodes.map((n) => ({
+    typeId: n.typeId,
+    name: n.name,
+    uri: n.uri,
+    description: n.description,
+  }));
+}
+
 // Build the fallback ADT URL for an object when listPackageContents returns no uri.
 function inferUrlFromTypeAndName(typeId, name) {
   const lower = String(name).toLowerCase();
@@ -283,30 +307,17 @@ function inferUrlFromTypeAndName(typeId, name) {
   }
 }
 
-//IYH1HC add
-// Fetch all relevant includes for one ABAP object and return them as
-// abaplint MemoryFile instances. 404 includes (e.g. missing testclasses) are
-// silently skipped. Used by both `adt lint` and `adt object pull`.
-//IYH1HC add — On legacy S/4HANA (e.g. T4X), the ADT endpoint
-//IYH1HC add — /source/<include> returns the SAME body for all 5 CLAS
-//IYH1HC add — sub-includes (main = definitions = implementations = macros =
-//IYH1HC add — testclasses). Feeding 5 identical files to abaplint creates
-//IYH1HC add — duplicate class definitions inside one Registry → the 3_structures
-//IYH1HC add — pass fails to locate MethodImplementation nodes → metrics empty.
-//IYH1HC add — Dedupe by raw content so abaplint sees exactly one .clas.abap.
 async function fetchObjectAsMemoryFiles(client, objectUrl, typeId, name, includeOverride) {
   const includes = includeOverride
     ? [includeOverride]
     : adapter.relevantIncludesFor(typeId);
 
   const files = [];
-  //IYH1HC add — content dedupe (only for CLAS, where SAP repeats the body).
   const seenBodies = typeId === "CLAS/OC" ? new Set() : null;
 
   for (const inc of includes) {
     try {
       const src = await getSource(client, objectUrl, { include: inc });
-      //IYH1HC add
       if (seenBodies) {
         // Cheap content key: length + first 200 chars. Cheap to compute, very
         // strong signal for "same source", insensitive to trailing whitespace
@@ -344,6 +355,11 @@ function walk(obj, path) {
   return cur;
 }
 
+function toArray(v) {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
 // Pull "@_attr" entries out of a fast-xml-parser node.
 function nodeAttr(node) {
   if (!node || typeof node !== "object") return {};
@@ -369,7 +385,7 @@ module.exports = {
   inactiveObjects,
   structure,
   getSource,
-  //IYH1HC add
+  listNodes,
   listPackageContents,
   inferUrlFromTypeAndName,
   fetchObjectAsMemoryFiles,
